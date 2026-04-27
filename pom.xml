@@ -1,0 +1,330 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- ======================== 项目基本信息 ======================== -->
+    <groupId>com.quant</groupId>
+    <artifactId>gate-quant-trader</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <name>Gate.io 永续合约量化交易系统</name>
+    <description>
+        基于 Gate.io API 的永续合约量化交易程序，支持 MACD+KD+RSI 策略，
+        支持多币种并发运行，提供实盘交易与历史回测功能。
+    </description>
+
+    <!-- ======================== 全局属性 ======================== -->
+    <properties>
+        <java.version>11</java.version>
+        <maven.compiler.source>11</maven.compiler.source>
+        <maven.compiler.target>11</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+        <!-- 依赖版本号统一管理 -->
+        <gate.api.version>7.1.8</gate.api.version>
+        <!-- SLF4J 2.0.13：修复若干小版本问题 -->
+        <slf4j.version>2.0.13</slf4j.version>
+        <!-- Logback 1.5.x：修复 CVE-2024-12798、CVE-2024-12801（JaninoEventEvaluator 漏洞）
+             以及 CVE-2022-24329 等历史漏洞；1.5.x 为当前稳定安全分支 -->
+        <logback.version>1.5.18</logback.version>
+        <!-- Jackson 2.17.x：修复 CVE-2022-42003、CVE-2022-42004 及 WS-2006-0003 等漏洞 -->
+        <jackson.version>2.17.2</jackson.version>
+        <!-- SnakeYAML 2.3：修复 CVE-2022-41854 等反序列化安全问题 -->
+        <snakeyaml.version>2.3</snakeyaml.version>
+        <ta4j.version>0.16</ta4j.version>
+        <!-- JUnit 5.10.3：最新稳定版 -->
+        <junit.version>5.10.3</junit.version>
+        <lombok.version>1.18.34</lombok.version>
+        <!-- OkHttp/Okio 显式升级，修复 CVE-2023-3635（数字类型转换漏洞） -->
+        <okhttp.version>4.12.0</okhttp.version>
+        <!-- commons-lang3 3.14.0：修复 CVE-2024-48926 -->
+        <commons.lang3.version>3.14.0</commons.lang3.version>
+        <!-- MySQL + 连接池 -->
+        <mysql.version>8.0.33</mysql.version>
+        <hikaricp.version>5.1.0</hikaricp.version>
+    </properties>
+
+    <!-- ======================== 依赖版本强制管控（BOM / dependencyManagement）========================
+         通过 dependencyManagement 锁定传递依赖的版本，确保所有模块（包括 SDK 间接引入的）
+         都使用无 CVE 的安全版本，即使直接声明已在上方覆盖，这里再次加固。
+    ========================================================================================== -->
+    <dependencyManagement>
+        <dependencies>
+            <!-- OkHttp / Okio：修复 CVE-2023-3635 -->
+            <dependency>
+                <groupId>com.squareup.okhttp3</groupId>
+                <artifactId>okhttp</artifactId>
+                <version>${okhttp.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.squareup.okio</groupId>
+                <artifactId>okio</artifactId>
+                <version>3.9.0</version>
+            </dependency>
+            <dependency>
+                <groupId>com.squareup.okio</groupId>
+                <artifactId>okio-jvm</artifactId>
+                <version>3.9.0</version>
+            </dependency>
+            <!-- commons-lang3：修复 CVE-2024-48926 -->
+            <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-lang3</artifactId>
+                <version>${commons.lang3.version}</version>
+            </dependency>
+            <!-- Jackson（全家桶统一锁版本）：修复 WS-2006-0003 等 -->
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-core</artifactId>
+                <version>${jackson.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-annotations</artifactId>
+                <version>${jackson.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-databind</artifactId>
+                <version>${jackson.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.jackson.datatype</groupId>
+                <artifactId>jackson-datatype-jsr310</artifactId>
+                <version>${jackson.version}</version>
+            </dependency>
+            <!-- Logback：修复 CVE-2024-12798、CVE-2024-12801 -->
+            <dependency>
+                <groupId>ch.qos.logback</groupId>
+                <artifactId>logback-classic</artifactId>
+                <version>${logback.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>ch.qos.logback</groupId>
+                <artifactId>logback-core</artifactId>
+                <version>${logback.version}</version>
+            </dependency>
+            <!-- SnakeYAML -->
+            <dependency>
+                <groupId>org.yaml</groupId>
+                <artifactId>snakeyaml</artifactId>
+                <version>${snakeyaml.version}</version>
+            </dependency>
+            <!-- HikariCP 连接池 -->
+            <dependency>
+                <groupId>com.zaxxer</groupId>
+                <artifactId>HikariCP</artifactId>
+                <version>${hikaricp.version}</version>
+            </dependency>
+            <!-- MySQL JDBC 驱动 -->
+            <dependency>
+                <groupId>com.mysql</groupId>
+                <artifactId>mysql-connector-j</artifactId>
+                <version>${mysql.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <!-- ======================== 依赖管理 ======================== -->
+    <dependencies>
+
+        <!-- ──── Gate.io 官方 Java SDK ──── -->
+        <dependency>
+            <groupId>io.gate</groupId>
+            <artifactId>gate-api</artifactId>
+            <version>${gate.api.version}</version>
+        </dependency>
+
+        <!-- ──── 技术分析库 TA4J（提供 MACD / RSI / StochasticOscillator 等指标） ──── -->
+        <dependency>
+            <groupId>org.ta4j</groupId>
+            <artifactId>ta4j-core</artifactId>
+            <version>${ta4j.version}</version>
+        </dependency>
+
+        <!-- ──── 日志门面 SLF4J ──── -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>${slf4j.version}</version>
+        </dependency>
+
+        <!-- ──── 日志实现 Logback（支持彩色控制台 + 文件滚动输出） ──── -->
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <version>${logback.version}</version>
+        </dependency>
+
+        <!-- ──── YAML 配置文件解析 ──── -->
+        <dependency>
+            <groupId>org.yaml</groupId>
+            <artifactId>snakeyaml</artifactId>
+            <version>${snakeyaml.version}</version>
+        </dependency>
+
+        <!-- ──── Jackson：JSON 序列化/反序列化（SDK 内部也使用） ──── -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>${jackson.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+            <version>${jackson.version}</version>
+        </dependency>
+
+        <!-- ──── Lombok：减少样板代码（getter/setter/builder/log） ──── -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>${lombok.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- ──── 单元测试 JUnit 5 ──── -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- ════════════════════════════════════════════════════════════
+             以下为安全漏洞修复：显式覆盖传递依赖的低版本，消除 CVE 警告
+             ════════════════════════════════════════════════════════════ -->
+
+        <!-- OkHttp 4.12.0：修复 CVE-2023-3635（Okio 数字类型不安全转换漏洞）
+             gate-api SDK 间接依赖的 okhttp3，显式提升到安全版本 -->
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp</artifactId>
+            <version>${okhttp.version}</version>
+        </dependency>
+
+        <!-- Okio 3.9.0（OkHttp 4.12.0 的配套版本，修复 CVE-2023-3635） -->
+        <dependency>
+            <groupId>com.squareup.okio</groupId>
+            <artifactId>okio</artifactId>
+            <version>3.9.0</version>
+        </dependency>
+
+        <!-- commons-lang3 3.14.0：修复 CVE-2024-48926（功能不足/信息泄露） -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+            <version>${commons.lang3.version}</version>
+        </dependency>
+
+        <!-- ──── MySQL 数据库 ──── -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+        </dependency>
+        <!-- HikariCP 高性能连接池 -->
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
+        </dependency>
+
+    </dependencies>
+
+    <!-- ======================== 构建插件 ======================== -->
+    <build>
+        <!-- 将 src/main/resources 纳入资源目录 -->
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>false</filtering>
+            </resource>
+        </resources>
+
+        <plugins>
+
+            <!-- Java 编译器插件 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.12.1</version>
+                <configuration>
+                    <source>${java.version}</source>
+                    <target>${java.version}</target>
+                    <encoding>UTF-8</encoding>
+                    <!-- 保留方法参数名，方便调试 -->
+                    <compilerArgs>
+                        <arg>-parameters</arg>
+                    </compilerArgs>
+                </configuration>
+            </plugin>
+
+            <!-- 打包成可执行的 fat-jar（包含所有依赖） -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <version>3.6.0</version>
+                <configuration>
+                    <descriptorRefs>
+                        <descriptorRef>jar-with-dependencies</descriptorRef>
+                    </descriptorRefs>
+                    <archive>
+                        <manifest>
+                            <!-- 主程序入口 -->
+                            <mainClass>com.quant.Main</mainClass>
+                        </manifest>
+                    </archive>
+                    <!-- 输出文件名：gate-quant-trader-1.0.0-all.jar -->
+                    <finalName>${project.artifactId}-${project.version}-all</finalName>
+                    <appendAssemblyId>false</appendAssemblyId>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>make-assembly</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- JUnit 5 测试运行器 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.3</version>
+                <configuration>
+                    <useModulePath>false</useModulePath>
+                </configuration>
+            </plugin>
+
+            <!-- 代码格式化插件 (Spotless) -->
+            <plugin>
+                <groupId>com.diffplug.spotless</groupId>
+                <artifactId>spotless-maven-plugin</artifactId>
+                <version>2.43.0</version>
+                <configuration>
+                    <java>
+                        <!-- 使用 Google Java Style Guide（业界标准） -->
+                        <googleJavaFormat>
+                            <version>1.19</version>
+                            <style>AOSP</style>
+                        </googleJavaFormat>
+                        <!-- 移除未使用的导入 -->
+                        <removeUnusedImports/>
+                        <!-- 排序导入语句 -->
+                        <importOrder>
+                            <order>java|javax|org|com|io|ch.qos|org.slf4j</order>
+                        </importOrder>
+                    </java>
+                </configuration>
+            </plugin>
+
+        </plugins>
+    </build>
+
+</project>

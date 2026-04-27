@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Logback 日志配置文件
+  功能：
+    1. 控制台彩色输出，区分不同日志级别
+    2. 文件滚动输出，按天分割，自动清理过期日志
+    3. 交易信号单独写入 trade.log，方便审计
+-->
+<configuration scan="true" scanPeriod="60 seconds">
+
+    <!-- ── 从 application.yml 读取日志配置（通过 System Property 注入） ── -->
+    <property name="LOG_DIR" value="${LOG_DIR:-logs}"/>
+    <property name="MAX_FILE_SIZE" value="${MAX_FILE_SIZE:-50MB}"/>
+    <property name="MAX_HISTORY" value="${MAX_HISTORY:-30}"/>
+
+    <!-- ═══════════════════════════════════════════════════
+         控制台 Appender（带颜色，方便开发调试）
+    ══════════════════════════════════════════════════════ -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <!--
+                格式说明：
+                %d{HH:mm:ss.SSS}  - 时间（时:分:秒.毫秒）
+                %-5level          - 日志级别（左对齐，宽度5）
+                [%15.15t]         - 线程名（最多15字符）
+                %-40.40logger{39} - 类名简写（最多40字符）
+                %msg%n            - 日志消息 + 换行
+            -->
+            <pattern>%d{HH:mm:ss.SSS} %highlight(%-5level) [%cyan(%-20.20t)] %yellow(%-35.35logger{34}) - %msg%n</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- ═══════════════════════════════════════════════════
+         主日志文件 Appender（滚动按天，保留30天）
+    ══════════════════════════════════════════════════════ -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <!-- 当前日志文件路径 -->
+        <file>${LOG_DIR}/quant-trader.log</file>
+
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <!-- 滚动文件名规则：按天归档 -->
+            <fileNamePattern>${LOG_DIR}/archive/quant-trader.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <!-- 最大保留天数 -->
+            <maxHistory>${MAX_HISTORY}</maxHistory>
+            <!-- 总日志大小上限（超出则删除最旧的） -->
+            <totalSizeCap>1GB</totalSizeCap>
+        </rollingPolicy>
+
+        <encoder>
+            <!-- 文件日志包含完整类路径 -->
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%t] %logger{50} - %msg%n</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- ═══════════════════════════════════════════════════
+         交易信号专用日志（开仓/平仓信号单独记录，方便审计）
+    ══════════════════════════════════════════════════════ -->
+    <appender name="TRADE_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/trade-signals.log</file>
+
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/archive/trade-signals.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <maxHistory>90</maxHistory>
+        </rollingPolicy>
+
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} | %msg%n</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- ═══════════════════════════════════════════════════
+         Logger 配置
+    ══════════════════════════════════════════════════════ -->
+
+    <!-- 交易信号 Logger：同时写入交易专用日志和主日志 -->
+    <logger name="TRADE_SIGNAL" level="INFO" additivity="false">
+        <appender-ref ref="TRADE_FILE"/>
+        <appender-ref ref="CONSOLE"/>
+    </logger>
+
+    <!-- 压制第三方库的冗余日志 -->
+    <logger name="io.gate.gateapi" level="WARN"/>
+    <logger name="okhttp3" level="WARN"/>
+    <logger name="retrofit2" level="WARN"/>
+    <logger name="org.ta4j" level="WARN"/>
+
+    <!-- 根 Logger -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+    </root>
+
+</configuration>
