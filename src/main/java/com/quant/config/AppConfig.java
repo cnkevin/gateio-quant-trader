@@ -380,20 +380,23 @@ public class AppConfig {
 
     // ── 数据库配置 ──────────────────────────────────────────────────────
 
-    /** 数据库相关配置 */
+    /**
+     * 数据库相关配置
+     * 
+     * 程序使用 MySQL 数据库存储交易记录、K线数据和回测报告。
+     * 启动程序前请确保数据库连接配置正确，否则程序将无法启动。
+     */
     @Data
     public static class DatabaseConfig {
-        /** 是否启用数据库 */
-        private boolean enabled;
-        /** 数据库主机 */
+        /** 数据库主机名或 IP 地址 */
         private String host;
-        /** 数据库端口 */
+        /** 数据库端口号 */
         private int port;
-        /** 数据库名称 */
+        /** 数据库名称（schema） */
         private String name;
-        /** 用户名 */
+        /** 数据库用户名 */
         private String username;
-        /** 密码 */
+        /** 数据库密码 */
         private String password;
         /** 连接池配置 */
         private PoolConfig pool;
@@ -401,7 +404,6 @@ public class AppConfig {
         @SuppressWarnings("unchecked")
         static DatabaseConfig from(Map<String, Object> m) {
             DatabaseConfig c = new DatabaseConfig();
-            c.enabled = getBool(m, "enabled", false);
             c.host = getString(m, "host", "localhost");
             c.port = getInt(m, "port", 3306);
             c.name = getString(m, "name", "quant_trader");

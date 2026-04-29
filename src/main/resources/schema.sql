@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS backtest_trades (
     exit_time       DATETIME COMMENT '出场时间',
     exit_price      DECIMAL(18, 8) COMMENT '出场价格',
     size            DECIMAL(18, 4) NOT NULL COMMENT '交易数量 (张)',
-    direction       VARCHAR(8) NOT NULL COMMENT '交易方向 (LONG/SHORT)',
+    direction        VARCHAR(32) NOT NULL COMMENT '交易方向 (LONG/SHORT)',
 
     -- 盈亏计算
     pnl             DECIMAL(18, 4) NOT NULL COMMENT '盈亏金额 (含手续费)',
@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS trading_records (
     -- 交易信息
     signal_type     VARCHAR(32) NOT NULL COMMENT '信号类型',
     signal_reason   VARCHAR(255) COMMENT '信号原因',
-    direction       VARCHAR(8) NOT NULL COMMENT '交易方向 (OPEN_LONG/CLOSE_LONG/...)',
+    direction       VARCHAR(32) NOT NULL COMMENT '交易方向 (OPEN_LONG/CLOSE_LONG/...)',
     size            DECIMAL(18, 4) NOT NULL COMMENT '交易数量 (张)',
     price           DECIMAL(18, 8) NOT NULL COMMENT '成交价格',
     order_type      VARCHAR(16) NOT NULL COMMENT '订单类型 (MARKET/LIMIT)',
@@ -120,7 +120,7 @@ CREATE TABLE IF NOT EXISTS position_snapshots (
     trade_record_id VARCHAR(64) COMMENT '关联的交易记录ID',
 
     -- 持仓信息
-    direction       VARCHAR(8) NOT NULL COMMENT '持仓方向 (LONG/SHORT)',
+    direction       VARCHAR(32) NOT NULL COMMENT '持仓方向 (LONG/SHORT)',
     size            DECIMAL(18, 4) NOT NULL COMMENT '持仓数量',
     entry_price     DECIMAL(18, 8) NOT NULL COMMENT '开仓价格',
     current_price   DECIMAL(18, 8) COMMENT '当前价格',
