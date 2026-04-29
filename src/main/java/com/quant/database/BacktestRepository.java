@@ -16,7 +16,6 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * 回测数据访问层
@@ -33,12 +32,13 @@ public class BacktestRepository {
 
     /**
      * 保存回测报告
+     * 
+     * 所有回测报告都会持久化到 MySQL 数据库。
+     * 报告ID唯一，重复保存会自动更新现有记录。
+     * 
+     * @param report 回测报告对象
      */
     public void saveReport(BacktestReport report) {
-        if (!db.isEnabled()) {
-            log.debug("数据库未启用，跳过保存回测报告");
-            return;
-        }
 
         String sql = "INSERT INTO backtest_reports (" +
                 "report_id, contract, strategy_name, start_time, end_time, " +
@@ -87,9 +87,16 @@ public class BacktestRepository {
 
     /**
      * 批量保存回测交易记录（从 BacktestRunner 的 domain model）
+     * 
+     * 所有回测交易记录都会持久化到 MySQL 数据库。
+     * 如果交易列表为空，则直接返回；批量插入使用事务确保数据一致性。
+     * 
+     * @param reportId 回测报告ID
+     * @param contract 合约名称
+     * @param trades 交易记录列表（可为空）
      */
     public void saveTrades(String reportId, String contract, List<BacktestTrade> trades) {
-        if (!db.isEnabled() || trades == null || trades.isEmpty()) {
+        if (trades == null || trades.isEmpty()) {
             return;
         }
 
@@ -135,61 +142,9 @@ public class BacktestRepository {
         }
     }
 
-    /**
-     * 查询最新的回测报告
-     */
-    public Optional<BacktestReport> findLatestReport(String contract) {
-        if (!db.isEnabled()) {
-            return Optional.empty();
-        }
+    
 
-        String sql = "SELECT * FROM backtest_reports WHERE contract = ? ORDER BY created_at DESC LIMIT 1";
-
-        try (Connection conn = db.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-
-            stmt.setString(1, contract);
-            ResultSet rs = stmt.executeQuery();
-
-            if (rs.next()) {
-                return Optional.of(mapResultSetToReport(rs));
-            }
-
-        } catch (SQLException e) {
-            log.error("查询最新回测报告失败: {}", contract, e);
-        }
-
-        return Optional.empty();
-    }
-
-    /**
-     * 查询回测报告列表
-     */
-    public List<BacktestReport> findReports(String contract, int limit) {
-        List<BacktestReport> reports = new ArrayList<>();
-        if (!db.isEnabled()) {
-            return reports;
-        }
-
-        String sql = "SELECT * FROM backtest_reports WHERE contract = ? ORDER BY created_at DESC LIMIT ?";
-
-        try (Connection conn = db.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-
-            stmt.setString(1, contract);
-            stmt.setInt(2, limit);
-            ResultSet rs = stmt.executeQuery();
-
-            while (rs.next()) {
-                reports.add(mapResultSetToReport(rs));
-            }
-
-        } catch (SQLException e) {
-            log.error("查询回测报告列表失败: {}", contract, e);
-        }
-
-        return reports;
-    }
+    
 
     // ==================== 私有方法 ====================
 

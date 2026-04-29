@@ -11,6 +11,7 @@ import io.gate.gateapi.api.FuturesApi;
 import io.gate.gateapi.models.FuturesAccount;
 import io.gate.gateapi.models.FuturesOrder;
 import io.gate.gateapi.models.Position;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -254,8 +255,20 @@ public class TradeExecutionService {
     public Position getPosition(String contract) {
         try {
             FuturesApi api = new FuturesApi(GateApiClientFactory.getAuthenticatedClient(contract));
-            // gate-api 7.x Builder 模式：getPosition() 返回 APIgetPositionRequest，需 .execute() 获取 Position
-            return api.getPosition(settle, contract).execute();
+            List<Position> positions = api.listPositions(settle).execute();
+            if (positions == null || positions.isEmpty()) {
+                log.debug("查询持仓为空（无持仓）合约={}", contract);
+                return null;
+            }
+            // 查找目标合约的持仓
+            for (Position pos : positions) {
+                if (contract.equals(pos.getContract())) {
+                    return pos;
+                }
+            }
+            // 未找到该合约的持仓
+            log.debug("未找到合约持仓 合约={}", contract);
+            return null;
         } catch (GateApiException e) {
             // 无持仓时 Gate.io 可能返回特定错误，此时视为无持仓
             if ("POSITION_NOT_FOUND".equals(e.getErrorLabel())) {

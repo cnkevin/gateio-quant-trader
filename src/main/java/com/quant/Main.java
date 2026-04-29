@@ -54,17 +54,13 @@ public class Main {
 
         // ── 2. 数据库连接检测 ──
         DatabaseManager db = DatabaseManager.getInstance();
-        if (db.isEnabled()) {
-            System.out.println(CYAN + "⟹ 正在检测数据库连接..." + RESET);
-            if (!db.testConnection()) {
-                System.out.println(RED + "❌ 数据库连接失败！请检查 MySQL 配置（host/port/账号密码）后重试" + RESET);
-                log.error("数据库连接检测失败，程序退出");
-                System.exit(1);
-            }
-            System.out.println(GREEN + "✅ 数据库连接正常" + RESET);
-        } else {
-            System.out.println(YELLOW + "⚠️  数据库未启用（K线数据将仅存储在内存中）" + RESET);
+        System.out.println(CYAN + "⟹ 正在检测数据库连接..." + RESET);
+        if (!db.testConnection()) {
+            System.out.println(RED + "❌ 数据库连接失败！请检查 MySQL 配置（host/port/账号密码）后重试" + RESET);
+            log.error("数据库连接检测失败，程序退出");
+            System.exit(1);
         }
+        System.out.println(GREEN + "✅ 数据库连接正常" + RESET);
 
         // ── 3. 注入日志系统属性（供 logback.xml 使用） ──
         AppConfig.LoggingConfig logCfg = AppConfig.getInstance().getLogging();
@@ -136,6 +132,8 @@ public class Main {
 
     /**
      * 功能1：API 连接检测（含数据库）
+     * 
+     * 本检测可帮助用户确认数据库和 API 的连接状态。
      */
     private static void doConnectionCheck() {
         System.out.println(CYAN + "\n⟹ 正在执行连接检测..." + RESET);
@@ -143,9 +141,7 @@ public class Main {
         // 数据库检测
         DatabaseManager db = DatabaseManager.getInstance();
         System.out.print("  [0] 数据库连接     ... ");
-        if (!db.isEnabled()) {
-            System.out.println(YELLOW + "⚠️  未启用" + RESET);
-        } else if (db.testConnection()) {
+        if (db.testConnection()) {
             System.out.println(GREEN + "✅ 正常" + RESET);
         } else {
             System.out.println(RED + "❌ 失败（请检查 MySQL 配置）" + RESET);

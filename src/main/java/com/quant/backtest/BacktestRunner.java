@@ -403,16 +403,20 @@ public class BacktestRunner {
 
     /**
      * 保存回测报告、交易记录和K线数据到数据库
+     * 
+     * 所有回测结果都会持久化到 MySQL 数据库。
+     * 保存过程包括回测报告、交易记录和K线数据三部分，使用同一事务确保数据一致性。
+     * 
+     * @param report 回测报告对象
+     * @param trades 交易记录列表
+     * @param contract 合约名称
+     * @param allCandles 完整的K线数据列表
+     * @param interval K线周期
      */
     private void saveToDatabase(BacktestReport report, List<BacktestTrade> trades,
                                 String contract, List<Candlestick> allCandles,
                                 String interval) {
         DatabaseManager dbManager = DatabaseManager.getInstance();
-
-        if (!dbManager.isEnabled()) {
-            log.debug("数据库未启用，跳过保存");
-            return;
-        }
 
         try {
             // 确保数据库连接正常

@@ -31,6 +31,9 @@ public class CandlestickRepository {
 
     /**
      * 批量保存回测K线数据
+     * 
+     * 所有K线数据都会持久化到 MySQL 数据库。
+     * 如果蜡烛图数据为空，则直接返回。
      *
      * @param reportId 关联的回测报告ID
      * @param contract 合约名称
@@ -39,7 +42,7 @@ public class CandlestickRepository {
      */
     public void saveBacktestCandles(String reportId, String contract, String interval,
                                     List<Candlestick> candles) {
-        if (!db.isEnabled() || candles == null || candles.isEmpty()) {
+        if (candles == null || candles.isEmpty()) {
             return;
         }
 
@@ -88,9 +91,13 @@ public class CandlestickRepository {
 
     /**
      * 保存单条K线数据（用于实盘缓存）
+     * 
+     * @param candle K线数据对象
+     * @param contract 合约名称
+     * @param interval K线周期
      */
     public void saveRealtimeCandle(Candlestick candle, String contract, String interval) {
-        if (!db.isEnabled() || candle == null) {
+        if (candle == null) {
             return;
         }
 
@@ -131,15 +138,17 @@ public class CandlestickRepository {
         }
     }
 
-    /**
+/**
      * 查询指定回测报告的K线数据
+     * 
+     * 所有K线数据都会从 MySQL 数据库中查询。
+     * 如果查询过程中发生异常，会记录错误日志并返回空列表。
+     * 
+     * @param reportId 回测报告ID
+     * @return K线数据列表（查询失败时返回空列表）
      */
     public List<Candlestick> findBacktestCandles(String reportId) {
         List<Candlestick> candles = new ArrayList<>();
-
-        if (!db.isEnabled()) {
-            return candles;
-        }
 
         String sql = "SELECT * FROM backtest_candles WHERE report_id = ? ORDER BY bar_time ASC";
 
@@ -164,13 +173,17 @@ public class CandlestickRepository {
 
     /**
      * 查询指定合约的实盘K线缓存
+     * 
+     * 用于查询缓存的实盘K线数据。
+     * 如果查询过程中发生异常，会记录错误日志并返回空列表。
+     * 
+     * @param contract 合约名称
+     * @param interval K线周期
+     * @param limit 返回记录数量上限
+     * @return K线数据列表（查询失败时返回空列表）
      */
     public List<Candlestick> findRealtimeCandles(String contract, String interval, int limit) {
         List<Candlestick> candles = new ArrayList<>();
-
-        if (!db.isEnabled()) {
-            return candles;
-        }
 
         String sql = "SELECT * FROM realtime_candles WHERE contract = ? AND kline_period = ? ORDER BY bar_time DESC LIMIT ?";
 
@@ -198,11 +211,13 @@ public class CandlestickRepository {
 
     /**
      * 删除指定报告的K线数据
+     * 
+     * 用于清理回测过程中产生的临时K线数据。
+     * 如果删除过程中发生异常，会记录错误日志，但不会抛出异常影响主流程。
+     * 
+     * @param reportId 回测报告ID
      */
     public void deleteBacktestCandles(String reportId) {
-        if (!db.isEnabled()) {
-            return;
-        }
 
         String sql = "DELETE FROM backtest_candles WHERE report_id = ?";
 
@@ -219,11 +234,13 @@ public class CandlestickRepository {
 
     /**
      * 清理过期的实盘K线缓存（保留最近 N 天）
+     * 
+     * 用于清理过期的实盘K线缓存数据。
+     * 建议定期调用此方法（如每天一次），以免数据库积累过多历史数据。
+     * 
+     * @param retainDays 保留天数（超过此天数的数据将被删除）
      */
     public void cleanupRealtimeCandles(int retainDays) {
-        if (!db.isEnabled()) {
-            return;
-        }
 
         String sql = "DELETE FROM realtime_candles WHERE bar_time < DATE_SUB(NOW(), INTERVAL ? DAY)";
 
