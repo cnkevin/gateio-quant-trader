@@ -250,8 +250,19 @@ public class TradeExecutionService {
     public Position getPosition(String contract) {
         try {
             FuturesApi api = new FuturesApi(GateApiClientFactory.getAuthenticatedClient(contract));
-            // gate-api 7.2.57+：直接查单合约持仓，无需遍历全量持仓列表
-            return api.getPosition(settle, contract).execute();
+            // ⚠️ Gate.io API 服务端 BUG：无持仓时 GET /futures/usdt/positions/{contract}
+            // 返回空数组 [] 而非 Position 对象，导致 Gson 抛出 JsonSyntaxException。
+            // 改回 listPositions 遍历方案规避此问题。
+            java.util.List<Position> positions = api.listPositions(settle).execute();
+            if (positions == null || positions.isEmpty()) {
+                return null;
+            }
+            for (Position pos : positions) {
+                if (contract.equals(pos.getContract())) {
+                    return pos;
+                }
+            }
+            return null;
         } catch (GateApiException e) {
             if ("POSITION_NOT_FOUND".equals(e.getErrorLabel())) {
                 return null;
