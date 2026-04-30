@@ -5,6 +5,7 @@ import com.quant.core.GateApiClientFactory;
 import com.quant.database.TradingRepository;
 import com.quant.model.TradingRecord;
 import com.quant.model.TradeSignal.Signal;
+import com.google.gson.JsonSyntaxException;
 import io.gate.gateapi.ApiException;
 import io.gate.gateapi.GateApiException;
 import io.gate.gateapi.api.FuturesApi;
@@ -250,9 +251,8 @@ public class TradeExecutionService {
     public Position getPosition(String contract) {
         try {
             FuturesApi api = new FuturesApi(GateApiClientFactory.getAuthenticatedClient(contract));
-            // ⚠️ Gate.io API 服务端 BUG：无持仓时 GET /futures/usdt/positions/{contract}
-            // 返回空数组 [] 而非 Position 对象，导致 Gson 抛出 JsonSyntaxException。
-            // 改回 listPositions 遍历方案规避此问题。
+            // ⚠️ Gate.io API 服务端 BUG：无持仓时返回空数组 [] 而非 Position 对象，
+            // 导致 Gson TypeToken 反序列化抛出 JsonSyntaxException。
             java.util.List<Position> positions = api.listPositions(settle).execute();
             if (positions == null || positions.isEmpty()) {
                 return null;
@@ -268,6 +268,10 @@ public class TradeExecutionService {
                 return null;
             }
             log.error("查询持仓失败(Gate错误) 合约={}, label={}", contract, e.getErrorLabel());
+            return null;
+        } catch (JsonSyntaxException e) {
+            // ⚠️ Gate BUG：无持仓时接口返回 []，SDK 反序列化失败，视为无持仓
+            log.debug("查询持仓为空（Gate服务端返回空数组）合约={}", contract);
             return null;
         } catch (ApiException e) {
             log.error("查询持仓失败(HTTP错误) 合约={}, code={}", contract, e.getCode());
@@ -326,28 +330,33 @@ public class TradeExecutionService {
     }
 
     /**
-     * 设置合约杠杆倍数
-     * <p>
-     * 使用 PositionApi 而非 FuturesApi 来设置杠杆，因为 Gate API 返回的是持仓列表格式。
-     * </p>
+     * 设置合约杠杆倍数（有持仓时才会真正设置）
      *
      * @param contract 合约名称
      * @param leverage 杠杆倍数
      */
     public void setLeverage(String contract, int leverage) {
         try {
-            FuturesApi api = new FuturesApi(GateApiClientFactory.getAuthenticatedClient(contract));
+            // ⚠️ Gate BUG：updatePositionLeverage 无持仓时返回 [] 导致 JsonSyntaxException
+            // 解决：先确认有持仓，再设置杠杆（有持仓时接口正常返回 Position 对象）
+            Position pos = getPosition(contract);
+            if (pos == null) {
+                log.debug("设置杠杆跳过（当前无持仓）合约={}", contract);
+                return;
+            }
 
-            // Gate API v4: PUT /futures/usdt/positions/{contract}/leverage
-            // 参数：settle, contract, leverage, crossLeverageLimit, pid
-            // - 逐仓模式：leverage = 具体值, crossLeverageLimit = null, pid = null
-            // - 全仓模式：leverage = "0", crossLeverageLimit = 具体值, pid = null
+            FuturesApi api = new FuturesApi(GateApiClientFactory.getAuthenticatedClient(contract));
+            // Gate API: PUT /futures/usdt/positions/{contract}/leverage
+            // 逐仓模式：leverage = 具体值, crossLeverageLimit = null, pid = null
             api.updatePositionLeverage(settle, contract, String.valueOf(leverage), null, null);
             log.info("杠杆设置成功 合约={} 杠杆={}x", contract, leverage);
         } catch (GateApiException e) {
             log.warn("设置杠杆失败(Gate业务错误) 合约={} 错误={}", contract, e.getErrorLabel());
-        } catch (Exception e) {
-            log.warn("设置杠杆失败(未知错误) 合约={}", contract, e);
+        } catch (JsonSyntaxException e) {
+            // ⚠️ Gate BUG 兜底：理论上到这里说明有持仓，但仍然返回了 []
+            log.warn("设置杠杆失败(Gate服务端返回空数组) 合约={}", contract, e);
+        } catch (ApiException e) {
+            log.warn("设置杠杆失败(HTTP错误) 合约={} code={}", contract, e.getCode());
         }
     }
 
