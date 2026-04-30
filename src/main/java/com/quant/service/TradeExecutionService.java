@@ -11,7 +11,6 @@ import io.gate.gateapi.api.FuturesApi;
 import io.gate.gateapi.models.FuturesAccount;
 import io.gate.gateapi.models.FuturesOrder;
 import io.gate.gateapi.models.Position;
-import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -104,7 +103,7 @@ public class TradeExecutionService {
             // 3. 构建市价开仓订单（size > 0 = 开多仓）
             FuturesOrder order = new FuturesOrder();
             order.setContract(contract);
-            order.setSize(Long.valueOf(size));  // Gate API v7.x 使用 Long 类型
+            order.setSize(String.valueOf(size));  // gate-api 7.2.57: size 改为 String 类型
             // 市价单：price="0", tif=IOC
             order.setPrice("0");
             order.setTif(FuturesOrder.TifEnum.IOC);
@@ -175,12 +174,12 @@ public class TradeExecutionService {
         try {
             // 查询当前持仓数量
             Position pos = getPosition(contract);
-            if (pos == null || pos.getSize() == null || pos.getSize() == 0) {
+            if (pos == null || pos.getSize() == null || "0".equals(pos.getSize())) {
                 log.warn("当前无持仓，跳过平仓 合约={}", contract);
                 return;
             }
 
-            long holdSize = pos.getSize();  // 当前持有数量（正数=多仓）
+            long holdSize = Long.parseLong(pos.getSize());  // gate-api 7.2.57: size 改为 String 类型
             if (holdSize <= 0) {
                 log.warn("当前持仓方向不是多仓（size={}），跳过平仓 合约={}", holdSize, contract);
                 return;
@@ -189,7 +188,7 @@ public class TradeExecutionService {
             // 构建市价平仓订单（size = 负持仓量 = 平多）
             FuturesOrder order = new FuturesOrder();
             order.setContract(contract);
-            order.setSize(Long.valueOf(-holdSize));  // 反向平仓，Gate API v7.x 使用 Long 类型
+            order.setSize(String.valueOf(-holdSize));  // gate-api 7.2.57: size 改为 String 类型
             order.setPrice("0");
             order.setTif(FuturesOrder.TifEnum.IOC);
             order.setReduceOnly(true);       // 只减仓，不反手开空
@@ -206,21 +205,17 @@ public class TradeExecutionService {
 
             FuturesApi api = new FuturesApi(GateApiClientFactory.getAuthenticatedClient(contract));
 
-            // 创建交易记录
-            String orderId = "PENDING_" + System.currentTimeMillis();
-            TradingRecord record = new TradingRecord(orderId, contract,
-                    signal.getType().name(), TradingRecord.DIR_CLOSE_LONG);
-            record.setSignalReason(signal.getReason());
-            record.setSize(java.math.BigDecimal.valueOf(holdSize));
-            record.setOrderType("MARKET");
-            tradingRepo.save(record);
-
             // Gate API v7.x: createFuturesOrder(settle, order, xGateExptime) - 第三个参数可传 null
             FuturesOrder result = api.createFuturesOrder(settle, order, null);
 
-            // 更新交易记录
-            record.setOrderId(String.valueOf(result.getId()));
+            // 成交后再创建交易记录（此时才有真实成交价）
+            String orderId = String.valueOf(result.getId());
+            TradingRecord record = new TradingRecord(orderId, contract,
+                    signal.getType().name(), TradingRecord.DIR_CLOSE_LONG);
+            record.setSignalReason(signal.getReason());
+            record.setSize(java.math.BigDecimal.valueOf(Math.abs(Long.parseLong(result.getSize()))));
             record.setPrice(java.math.BigDecimal.valueOf(Double.parseDouble(result.getFillPrice())));
+            record.setOrderType("MARKET");
             record.setStatus(TradingRecord.STATUS_SUCCESS);
             record.setOrderTime(java.time.LocalDateTime.now());
             record.setFillTime(java.time.LocalDateTime.now());
@@ -255,22 +250,9 @@ public class TradeExecutionService {
     public Position getPosition(String contract) {
         try {
             FuturesApi api = new FuturesApi(GateApiClientFactory.getAuthenticatedClient(contract));
-            List<Position> positions = api.listPositions(settle).execute();
-            if (positions == null || positions.isEmpty()) {
-                log.debug("查询持仓为空（无持仓）合约={}", contract);
-                return null;
-            }
-            // 查找目标合约的持仓
-            for (Position pos : positions) {
-                if (contract.equals(pos.getContract())) {
-                    return pos;
-                }
-            }
-            // 未找到该合约的持仓
-            log.debug("未找到合约持仓 合约={}", contract);
-            return null;
+            // gate-api 7.2.57+：直接查单合约持仓，无需遍历全量持仓列表
+            return api.getPosition(settle, contract).execute();
         } catch (GateApiException e) {
-            // 无持仓时 Gate.io 可能返回特定错误，此时视为无持仓
             if ("POSITION_NOT_FOUND".equals(e.getErrorLabel())) {
                 return null;
             }
@@ -290,7 +272,7 @@ public class TradeExecutionService {
      */
     public boolean hasLongPosition(String contract) {
         Position pos = getPosition(contract);
-        return pos != null && pos.getSize() != null && pos.getSize() > 0;
+        return pos != null && pos.getSize() != null && Long.parseLong(pos.getSize()) > 0;
     }
 
     /**
@@ -334,6 +316,9 @@ public class TradeExecutionService {
 
     /**
      * 设置合约杠杆倍数
+     * <p>
+     * 使用 PositionApi 而非 FuturesApi 来设置杠杆，因为 Gate API 返回的是持仓列表格式。
+     * </p>
      *
      * @param contract 合约名称
      * @param leverage 杠杆倍数
@@ -341,16 +326,17 @@ public class TradeExecutionService {
     public void setLeverage(String contract, int leverage) {
         try {
             FuturesApi api = new FuturesApi(GateApiClientFactory.getAuthenticatedClient(contract));
-            // Gate API v7.x: updatePositionLeverage(settle, contract, leverage, crossLeverageLimit, pid)
+
+            // Gate API v4: PUT /futures/usdt/positions/{contract}/leverage
+            // 参数：settle, contract, leverage, crossLeverageLimit, pid
             // - 逐仓模式：leverage = 具体值, crossLeverageLimit = null, pid = null
             // - 全仓模式：leverage = "0", crossLeverageLimit = 具体值, pid = null
             api.updatePositionLeverage(settle, contract, String.valueOf(leverage), null, null);
             log.info("杠杆设置成功 合约={} 杠杆={}x", contract, leverage);
         } catch (GateApiException e) {
-            // 如果已经是目标杠杆，Gate.io 不会报错，此处仅记录
-            log.debug("设置杠杆 合约={} 杠杆={}x, Gate响应: {}", contract, leverage, e.getErrorLabel());
+            log.warn("设置杠杆失败(Gate业务错误) 合约={} 错误={}", contract, e.getErrorLabel());
         } catch (Exception e) {
-            log.warn("设置杠杆失败 合约={}", contract, e);
+            log.warn("设置杠杆失败(未知错误) 合约={}", contract, e);
         }
     }
 
