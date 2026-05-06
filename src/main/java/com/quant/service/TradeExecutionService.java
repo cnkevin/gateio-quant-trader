@@ -122,20 +122,15 @@ public class TradeExecutionService {
             // 实盘下单
             FuturesApi api = new FuturesApi(GateApiClientFactory.getAuthenticatedClient(contract));
 
-            // 创建交易记录
-            String orderId = "PENDING_" + System.currentTimeMillis();
-            TradingRecord record = new TradingRecord(orderId, contract, "BUY", TradingRecord.DIR_OPEN_LONG);
-            record.setSize(java.math.BigDecimal.valueOf(size));
-            record.setPrice(java.math.BigDecimal.valueOf(currentPrice));
-            record.setOrderType("MARKET");
-            tradingRepo.save(record);
-
             // Gate API v7.x: createFuturesOrder(settle, order, xGateExptime) - 第三个参数可传 null
             FuturesOrder result = api.createFuturesOrder(settle, order, null);
 
-            // 更新交易记录
-            record.setOrderId(String.valueOf(result.getId()));
+            // 成交后再创建交易记录（此时才有真实订单ID和成交价）
+            TradingRecord record = new TradingRecord(
+                    String.valueOf(result.getId()), contract, "BUY", TradingRecord.DIR_OPEN_LONG);
+            record.setSize(java.math.BigDecimal.valueOf(Long.parseLong(result.getSize())));
             record.setPrice(java.math.BigDecimal.valueOf(Double.parseDouble(result.getFillPrice())));
+            record.setOrderType("MARKET");
             record.setStatus(TradingRecord.STATUS_SUCCESS);
             record.setOrderTime(java.time.LocalDateTime.now());
             record.setFillTime(java.time.LocalDateTime.now());
@@ -149,9 +144,6 @@ public class TradeExecutionService {
         } catch (GateApiException e) {
             log.error("开多仓失败(Gate业务错误) 合约={}, label={}, msg={}",
                     contract, e.getErrorLabel(), e.getMessage(), e);
-            // 更新交易记录状态
-            tradingRepo.updateStatus("PENDING_" + System.currentTimeMillis(),
-                    TradingRecord.STATUS_FAILED, e.getErrorLabel());
         } catch (ApiException e) {
             log.error("开多仓失败(HTTP错误) 合约={}, code={}", contract, e.getCode(), e);
         } catch (Exception e) {
@@ -330,31 +322,26 @@ public class TradeExecutionService {
     }
 
     /**
-     * 设置合约杠杆倍数（有持仓时才会真正设置）
+     * 设置合约杠杆倍数
      *
      * @param contract 合约名称
      * @param leverage 杠杆倍数
      */
     public void setLeverage(String contract, int leverage) {
         try {
-            // ⚠️ Gate BUG：updatePositionLeverage 无持仓时返回 [] 导致 JsonSyntaxException
-            // 解决：先确认有持仓，再设置杠杆（有持仓时接口正常返回 Position 对象）
-            Position pos = getPosition(contract);
-            if (pos == null) {
-                log.debug("设置杠杆跳过（当前无持仓）合约={}", contract);
-                return;
-            }
-
             FuturesApi api = new FuturesApi(GateApiClientFactory.getAuthenticatedClient(contract));
-            // Gate API: PUT /futures/usdt/positions/{contract}/leverage
-            // 逐仓模式：leverage = 具体值, crossLeverageLimit = null, pid = null
-            api.updatePositionLeverage(settle, contract, String.valueOf(leverage), null, null);
+
+            // ⚠️ Gate.io 服务端 BUG：updatePositionLeverage 无论有无持仓，响应体有时返回 []
+            // SDK 用 TypeToken<Position> 反序列化会崩。
+            // 根治方案：直接取底层 OkHttp Call，用 execute(call, null)，
+            // returnType=null 时 ApiClient.handleResponse 跳过反序列化，只验证 HTTP 状态码。
+            okhttp3.Call call = api.updatePositionLeverageCall(
+                    settle, contract, String.valueOf(leverage), null, null, null);
+            api.getApiClient().execute(call, null);
+
             log.info("杠杆设置成功 合约={} 杠杆={}x", contract, leverage);
         } catch (GateApiException e) {
             log.warn("设置杠杆失败(Gate业务错误) 合约={} 错误={}", contract, e.getErrorLabel());
-        } catch (JsonSyntaxException e) {
-            // ⚠️ Gate BUG 兜底：理论上到这里说明有持仓，但仍然返回了 []
-            log.warn("设置杠杆失败(Gate服务端返回空数组) 合约={}", contract, e);
         } catch (ApiException e) {
             log.warn("设置杠杆失败(HTTP错误) 合约={} code={}", contract, e.getCode());
         }

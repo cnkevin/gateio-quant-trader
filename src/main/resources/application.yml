@@ -48,10 +48,10 @@ trading:
   leverage: 2
 
   # 止损比例（相对于开仓价格的亏损百分比；0.05 = 5%）
-  stop_loss_pct: 0.05
+  stop_loss_pct: 0.07
 
   # 止盈比例（相对于开仓价格的盈利百分比；0.10 = 10%）
-  take_profit_pct: 0.10
+  take_profit_pct: 0.15
 
   # ── 策略执行频率 ──
   # 策略轮询间隔（秒）：每隔多少秒抓取一次 K 线并计算指标
